@@ -1,0 +1,112 @@
+version: "3.3"
+
+services:
+  traefik:
+    image: traefik:latest
+    command:
+      # web entrypoint
+      - --entrypoints.web.address=:80
+      # dashboard entrypoint
+      - --entryPoints.traefik.address=:8080
+      # metrics entrypoint
+      - --entryPoints.metrics.address=:8081
+      # mysql entrypoint
+      # - --entryPoints.mysql.address=:3306
+      # file provider
+      # - --providers.file.filename=/traefik-tls.toml
+      # - --providers.file.watch=true
+      # docker provider
+      - --providers.docker=true
+      - --api.insecure
+      # - --log.level=DEBUG
+      - --accesslog=true
+      # METRICS
+      - --metrics=true
+      - --metrics.prometheus=true
+      - --metrics.prometheus.entryPoint=metrics
+      - --metrics.prometheus.buckets=0.1,0.3,1.2,5.0
+      - --metrics.prometheus.addServicesLabels=true
+      - --metrics.prometheus.addEntryPointsLabels=true
+      # # TRACING
+      - --tracing=true
+      - --tracing.serviceName=traefik
+      - --tracing.spanNameLimit=150
+      # # TRACING BACKEND
+      - --tracing.jaeger=true
+      - --tracing.jaeger.samplingServerURL=http://jaeger:5778/sampling
+      - --tracing.jaeger.samplingType=const
+      - --tracing.jaeger.samplingParam=1.0
+      - --tracing.jaeger.localAgentHostPort=jaeger:6831
+      # - --tracing.jaeger.propagation=jaeger
+      # - --tracing.jaeger.traceContextHeaderName=myapp-trace-id
+    ports:
+      # sera usado para rotear para as apps
+      - "80:80"
+      # sera usado para o dashboard
+      - "8080:8080"
+      # sera acessado de fora para obter as metricas do traefik
+      - "8081:8081"
+      # para atender mysql
+      # - "3306:3306"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      # - ./traefik/traefik.yml:/traefik.yml
+      - ./certs:/certs
+    networks:
+      - monitoring
+      - frontend
+
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+    - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    networks:
+      - monitoring
+      - frontend
+    labels:
+      - "traefik.http.routers.prometheus.rule=Host(`prometheus.local`)"
+      - "traefik.http.middlewares.prometheus.redirectscheme.port=8081"
+      - "traefik.http.routers.prometheus.entrypoints=web"
+
+  grafana:
+    image: grafana/grafana:latest
+    # environment:
+    #   - GF_PATHS_PLUGINS=${GF_PATHS_PLUGINS}
+    #   - GF_INSTALL_PLUGINS=${GF_INSTALL_PLUGINS}
+    ports:
+      - "3000:3000"
+    volumes:
+    #   - ./grafana/grafana.ini:/etc/grafana/grafana.ini
+      - ./grafana/plugins:/var/lib/grafana/plugins
+    networks:
+      - monitoring
+      - frontend
+    labels:
+      - "traefik.http.routers.grafana.rule=Host(`grafana.local`)"
+      - "traefik.http.middlewares.grafana.redirectscheme.port=3000"
+      - "traefik.http.routers.grafana.entrypoints=web"
+
+  jaeger:
+    image: jaegertracing/all-in-one
+    ports:
+      # - "5575:5575/udp"
+      # - "5778:5778"
+      - "6831:6831"
+      - "6832:6832"
+      - "14250:14250"
+      - "14268:14268"
+      - "16686:16686"
+    networks:
+      - monitoring
+    labels:
+      - "traefik.http.routers.jaeger.rule=Host(`jaeger.local`)"
+      - "traefik.http.middlewares.jaeger.redirectscheme.port=16686"
+      - "traefik.http.routers.jaeger.entrypoints=web"
+
+networks:
+  monitoring:
+    driver: "bridge"
+  frontend:
+    driver: "bridge"
