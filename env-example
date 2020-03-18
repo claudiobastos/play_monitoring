@@ -1,0 +1,5 @@
+
+
+# grafana
+#GF_PATHS_PLUGINS=/var/lib/grafana/plugins
+#GF_INSTALL_PLUGINS=
